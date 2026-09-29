@@ -1,4 +1,6 @@
 #!/bin/bash
+# 특정 VM 주소와 /root/bin 경로를 사용하고 기존 로그·그래프 디렉터리를 삭제합니다.
+# 대상 주소와 삭제될 파일을 확인한 격리된 환경에서만 실행하세요.
 
 if [ $# -ne 1 ] ; then
   echo "Usage: $0 [server|client]"

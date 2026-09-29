@@ -53,6 +53,39 @@ cat /proc/mdstat
 
 `pvs`, `vgs`, `lvs`는 LVM을 사용하는 VM에서, `/proc/mdstat`는 소프트웨어 RAID를 구성한 VM에서 의미가 있습니다. 생성 명령이 성공 메시지를 냈더라도 이 출력으로 실제 대상과 상태를 다시 확인합니다. 파티션 유형 표시는 파티션 도구와 디스크 레이블에 따라 다르며, 해당 유형 표시만으로 PV의 생성 여부를 판단할 수 없습니다.
 
+### 기존 LVM과 파일시스템 확장
+
+LV 확장은 장치 계층과 파일시스템을 각각 확인하는 작업입니다. 먼저 백업 또는 복구 수단, VG의 여유 공간, LV 경로, 파일시스템 유형과 마운트 지점을 기록합니다.
+
+```bash
+vgs
+lvs -o lv_name,vg_name,lv_size,lv_path
+lsblk -f
+findmnt /mnt/data
+```
+
+확인한 실습 LV에만 `lvextend -L +<추가용량> <LV경로>`를 적용하고, 그다음 파일시스템 종류에 맞는 확장 도구를 사용합니다. 마운트된 XFS는 `xfs_growfs <마운트지점>`, ext4는 `resize2fs <LV경로>`가 대응합니다. `lvextend -r`은 LV와 지원되는 파일시스템의 크기 조정을 함께 요청하는 선택지이지만, 대상·여유 공간·지원 여부를 확인하는 절차를 생략하지 않습니다. 적용 뒤 `lvs`, `findmnt`, `df -hT`의 크기와 유형을 대조합니다.
+
+XFS는 확장은 가능하지만 축소는 지원하지 않습니다. LV만 먼저 줄이면 파일시스템을 손상할 수 있으므로 이 문서는 축소 절차를 제시하지 않습니다.
+
+### 새 Swap 영역과 영구 설정
+
+기존 Swap을 유지하면서 새 영역을 추가하려면 먼저 활성 장치와 후보 장치가 겹치지 않는지 확인합니다.
+
+```bash
+swapon --show --output=NAME,TYPE,SIZE,USED,PRIO
+lsblk -f
+blkid
+```
+
+`mkswap <확인한-Swap-장치>`는 해당 장치의 기존 서명을 덮어쓸 수 있으므로, 사용 중인 파일시스템·LVM·RAID 구성원이 아닌 전용 파티션 또는 LV임을 확인한 뒤에만 실행합니다. 생성 뒤 `blkid <확인한-Swap-장치>`에서 실제 UUID를 확인하고 `/etc/fstab`에는 다음 형식으로 기록합니다.
+
+```fstab
+UUID=<실제-Swap-UUID>  none  swap  defaults  0  0
+```
+
+`swapon -a`는 `/etc/fstab`의 모든 Swap 항목을 활성화하려고 하므로 편집 오류와 중복 항목을 먼저 검토합니다. 적용 뒤 `swapon --show`와 `free -h`에서 새 영역과 전체 용량을 확인합니다. 단순히 파티션을 만들거나 `/etc/fstab`에 줄을 넣은 것만으로 활성화가 검증된 것은 아닙니다.
+
 ## 3. 파일시스템과 마운트 연결
 
 XFS·ext4 파일시스템과 수동 마운트, `/etc/fstab`의 영구 마운트는 각각 확인할 내용이 다릅니다. `blkid`로 확인한 실제 UUID와 파일시스템 유형을 사용합니다. 다음은 필드 형식을 보여주는 **미적용 예시**입니다.
@@ -77,4 +110,4 @@ swapon --show
 
 파일시스템 점검·복구는 사용 중인 볼륨에서 임의로 실행하지 않습니다. `fsck`와 `xfs_repair`는 대상 파일시스템 유형과 마운트 여부에 따라 절차가 다릅니다. 특히 XFS 파일시스템의 크기 축소는 지원되지 않으므로 LV 크기를 줄이기 전에 파일시스템 특성을 확인해야 합니다.
 
-참고: [Red Hat Enterprise Linux 9 파일시스템 관리](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/htmlsingle/managing_file_systems/index), [스토리지 장치 관리](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/managing_storage_devices/index), [LVM 물리 볼륨 관리](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/configuring_and_managing_logical_volumes/managing-lvm-physical-volumes_configuring-and-managing-logical-volumes).
+참고: [Red Hat Enterprise Linux 9 파일시스템 관리](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/htmlsingle/managing_file_systems/index), [스토리지 장치 관리](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/managing_storage_devices/index), [LVM 크기 조정](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/configuring_and_managing_logical_volumes/resizing-logical-volumes_basic-logical-volume-management).
